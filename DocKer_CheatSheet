@@ -1,0 +1,270 @@
+# Docker Commands - Cheat Sheet para el proyecto (Django + FastAPI + MariaDB)
+
+> Este archivo reúne los comandos Docker / Docker Compose más útiles para desarrollar, probar y mantener el stack de este proyecto.
+> Guarda este archivo y úsalo como referencia rápida.
+
+---
+
+## Notas previas
+- Se asume `docker compose` (Compose V2) y que estás en la carpeta raíz del proyecto (`backend`).
+- Para desarrollos locales usamos: `--env-file .env --profile dev`.
+- Servicios del `docker-compose.yml`: `web` (Django), `api` (FastAPI), `db` (MariaDB).
+- Ejecuta comandos desde WSL (recomendado) o PowerShell/Terminal.
+
+---
+
+## Ciclo diario - levantar / bajar / logs
+```bash
+# Levantar todo en modo dev (build + run en background)
+docker compose --env-file .env --profile dev up -d --build
+
+# Levantar en foreground (útil para ver logs en la misma terminal)
+docker compose --env-file .env --profile dev up --build
+
+# Parar y eliminar contenedores (sin borrar volúmenes)
+docker compose down
+
+# Parar y eliminar contenedores + volúmenes (reset DB)
+docker compose down -v
+
+# Ver contenedores y puertos mapeados del compose
+docker compose ps
+
+# Ver logs en tiempo real (todos los servicios)
+docker compose logs -f --tail=200
+
+# Ver logs de un servicio específico (ej. web)
+docker compose logs -f --tail=200 web
+```
+
+---
+
+## Build / reconstrucción
+```bash
+# Reconstruir solo una imagen (ej. web) y reiniciarla
+docker compose build web
+docker compose up -d web
+
+# Forzar rebuild sin cache
+docker compose build --no-cache
+
+# Build avanzado con BuildKit (opcional)
+DOCKER_BUILDKIT=1 docker build --progress=plain --target prod -t myapp:prod .
+```
+
+---
+
+## Ejecutar comandos dentro de contenedores
+```bash
+# Abrir shell dentro del contenedor web (Django)
+docker compose exec web bash
+
+# Ejecutar migrations (sin abrir shell)
+docker compose exec web python manage.py migrate --noinput
+
+# Crear superuser (interactivo)
+docker compose exec web python manage.py createsuperuser
+
+# Ejecutar tests (ej. en el servicio api)
+docker compose exec api uv run pytest -q
+# O (si no usas uv):
+docker compose exec api pytest -q
+
+# One-off: ejecutar un comando temporal (y eliminar el contenedor al salir)
+docker compose run --rm api uv run uvicorn app.main:app --reload
+```
+
+---
+
+## Inspección y debugging
+```bash
+# Listar contenedores (en ejecución)
+docker ps
+
+# Listar todos (incluidos stopped)
+docker ps -a
+
+# Inspeccionar un contenedor (ver State y Health)
+docker inspect <container_id_or_name>
+
+# Ver estado health (si hay healthcheck)
+docker inspect --format='{{json .State.Health}}' <container> | jq .
+
+# Mostrar qué puerto host está mapeado para un servicio
+docker compose port web 8000
+
+# Ver logs con timestamps
+docker logs --timestamps --tail 200 <container_id_or_name>
+
+# Estadísticas de recursos en tiempo real
+docker stats
+```
+
+---
+
+## Limpieza y manejo de imágenes / volúmenes
+```bash
+# Listar imágenes locales
+docker images
+
+# Eliminar una imagen por id
+docker rmi <image_id>
+
+# Eliminar contenedores parados
+docker container prune
+
+# Eliminar imágenes colgantes
+docker image prune
+
+# Limpiar todo (usa con cuidado)
+docker system prune -a --volumes
+
+# Borrar volúmenes (ej. reset DB)
+docker volume ls
+docker volume rm <volume_name>
+# O con compose:
+docker compose down -v
+```
+
+---
+
+## Redes y puertos
+```bash
+# Listar redes
+docker network ls
+
+# Inspeccionar la red interna del compose (ver contenedores conectados)
+docker network inspect <network_name>
+```
+
+---
+
+## Copiar archivos entre host y contenedor
+```bash
+# Copiar archivo del host al contenedor
+docker cp ./localfile.sql <container>:/tmp/localfile.sql
+
+# Copiar del contenedor al host
+docker cp <container>:/path/in/container/file.log ./file.log
+```
+
+---
+
+## Healthchecks y readiness
+```bash
+# Estado health (healthy / unhealthy / starting)
+docker inspect --format='{{.State.Health.Status}}' <container_name>
+
+# Probar endpoints ready/health desde host
+curl http://localhost:8000/healthz
+curl http://localhost:8001/healthz
+```
+
+---
+
+## Operaciones avanzadas (útiles a veces)
+```bash
+# Crear una imagen desde un contenedor (snapshot)
+docker commit <container_id> my-snapshot:latest
+
+# Guardar imagen a tar
+docker save -o myapp.tar myapp:latest
+
+# Cargar imagen desde tar
+docker load -i myapp.tar
+```
+
+---
+
+## Troubleshooting común y comandos rápidos
+- **Puerto en uso**:
+```bash
+docker compose ps
+# o en Windows PowerShell:
+netstat -ano | findstr :8000
+```
+- **DB no arranca / errores de MariaDB**:
+```bash
+docker compose logs db
+docker compose down -v
+docker compose up -d --build
+```
+- **Reload no detecta cambios en Windows**:
+  - Asegura `WATCHFILES_FORCE_POLLING=true` y monta con `:delegated`, o edita desde WSL.
+- **Fallo en build por dependencias nativas**:
+  - Comprueba `Dockerfile` tiene toolchain: `build-essential`, `default-libmysqlclient-dev`, `libssl-dev`.
+  - Rebuild sin cache:
+```bash
+docker compose build --no-cache
+```
+
+---
+
+## Comandos específicos del proyecto (resumen rápido)
+```bash
+# Levantar todo (dev)
+docker compose --env-file .env --profile dev up -d --build
+
+# Logs Django
+docker compose logs -f web
+
+# Migraciones Django
+docker compose exec web python manage.py migrate --noinput
+
+# Crear superuser
+docker compose exec web python manage.py createsuperuser
+
+# Shell Django
+docker compose exec web python manage.py shell
+
+# Tests API
+docker compose exec api uv run pytest -q
+
+# Entrar shell contenedor api
+docker compose exec api bash
+
+# Reset DB (borrar volúmenes)
+docker compose down -v
+docker compose up -d --build
+```
+
+---
+
+## Alias y scripts recomendados (añadir a tu `~/.bashrc` o `~/.profile`)
+```bash
+# Alias rápidos para WSL
+alias dcu='docker compose --env-file .env --profile dev up -d --build'
+alias dcd='docker compose down'
+alias dcl='docker compose logs -f --tail=200'
+alias dshell='docker compose exec web bash'
+```
+
+O usa los targets del `Makefile`:
+```bash
+make up
+make down
+make logs
+make pytest
+make precommit-update
+```
+
+---
+
+## Buenas prácticas rápidas
+- Edita código dentro de WSL para mejor I/O.
+- No comitees `.env`; usa `.env.example`.
+- Usa `docker compose down -v` solo cuando quieras resetear datos.
+- Mantén recursos (CPU/RAM) en Docker Desktop configurados.
+- Revisa healthchecks (`curl /healthz`) luego de levantar.
+
+---
+
+## ¿Quieres un script automatizado?
+Puedo generar un script `docker_start.sh` que:
+- copie `.env.example` → `.env` (si falta),
+- instale `pre-commit` localmente (opcional),
+- ejecute `pre-commit install`,
+- levante `docker compose --profile dev up -d --build`,
+- y abra los logs en otra terminal o imprima instrucciones.
+
+Responde **SÍ** si quieres que lo genere y lo deje listo para descargar.
