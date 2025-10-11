@@ -1,0 +1,31 @@
+[project]
+name = "py-docker-devstack"
+version = "0.1.0"
+description = "Entorno dev Python 3.12 con FastAPI + Django + MariaDB"
+requires-python = ">=3.12"
+
+dependencies = [
+  "fastapi>=0.95",
+  "uvicorn[standard]>=0.21",
+  "django>=5.1",
+  "mysqlclient>=2.2",   # driver mysql compatible con MariaDB
+  "sqlalchemy>=2.0",
+  "pymysql>=1.1",
+  "python-dotenv>=1.0",
+  "requests>=2.32",
+  "watchfiles>=0.24",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-cov>=4.0",
+  "ruff>=0.14",
+  "mypy>=1.11",
+  "bandit>=1.7",
+  "pip-audit>=2.7",
+  "types-requests>=2.32",
+]
+
+[tool.uv]
+default-groups = ["dev"]

@@ -1,0 +1,192 @@
+version: "3.9"
+
+x-defaults: &defaults
+  restart: unless-stopped
+  environment:
+    TZ: "America/Santiago"
+  deploy:
+    resources:
+      limits:
+        cpus: "1.0"
+        memory: 1G
+
+services:
+  # Base de datos MariaDB: solo en la red interna
+  db:
+    image: mariadb:11.4
+    container_name: db
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --skip-ssl  # en dev. en prod eliminar y configurar TLS
+    env_file: .env
+    environment:
+      MARIADB_DATABASE: ${DB_NAME}
+      MARIADB_USER: ${DB_USER}
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u${DB_USER} -p${DB_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+    <<: *defaults
+    security_opt:
+      - no-new-privileges:true
+    read_only: false  # DB necesita persistencia
+    cap_drop: ["ALL"]
+
+  # Django - servicio para desarrollo (perfil "dev")
+  web:
+    build:
+      context: .
+      target: dev
+    container_name: web
+    env_file: .env
+    environment:
+      PYTHONUNBUFFERED: "1"
+      DJANGO_SETTINGS_MODULE: project.settings
+      WATCHFILES_FORCE_POLLING: "true"
+    working_dir: /app
+    volumes:
+      - ./apps/web:/app:delegated
+    command: >
+      sh -lc "python manage.py migrate --noinput &&
+             python manage.py runserver 0.0.0.0:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+      - public
+    profiles: ["dev"]
+    <<: *defaults
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    read_only: false
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+
+  # Django - servicio para producción (perfil "prod")
+  web-prod:
+    build:
+      context: .
+      target: prod
+    container_name: web-prod
+    env_file: .env
+    environment:
+      PYTHONUNBUFFERED: "1"
+      DJANGO_SETTINGS_MODULE: project.settings
+    working_dir: /app
+    volumes: []  # no montar código en prod
+    command: >
+      sh -lc "gunicorn project.wsgi:application -b 0.0.0.0:8000 --workers 3 --threads 2 --timeout 60"
+    depends_on:
+      - db
+    ports:
+      - "9000:8000" # puerto distinto para producción local (ajustable)
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+      - public
+    profiles: ["prod"]
+    <<: *defaults
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+
+  # FastAPI - desarrollo (perfil "dev")
+  api:
+    build:
+      context: .
+      target: dev
+    container_name: api
+    env_file: .env
+    environment:
+      PYTHONUNBUFFERED: "1"
+      WATCHFILES_FORCE_POLLING: "true"
+    working_dir: /app
+    volumes:
+      - ./apps/api:/app:delegated
+    command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8001/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+      - public
+    profiles: ["dev"]
+    <<: *defaults
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+
+  # FastAPI - producción (perfil "prod")
+  api-prod:
+    build:
+      context: .
+      target: prod
+    container_name: api-prod
+    env_file: .env
+    working_dir: /app
+    volumes: []
+    command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8001 --workers 4
+    depends_on:
+      - db
+    ports:
+      - "9001:8001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8001/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+      - public
+    profiles: ["prod"]
+    <<: *defaults
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+
+volumes:
+  db_data:
+
+networks:
+  internal:
+    driver: bridge
+    internal: true
+  public:
+    driver: bridge
