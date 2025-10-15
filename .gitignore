@@ -25,3 +25,6 @@ db-backup/
 .DS_Store
 Thumbs.db
 .idea/
+
+#others
+dont_upload/*
