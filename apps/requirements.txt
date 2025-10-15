@@ -1,0 +1,13 @@
+fastapi[all]
+uvicorn[standard]
+django>=4.2
+sqlalchemy
+pymysql
+python-dotenv
+pytest
+pytest-django
+pytest-cov
+ruff
+mypy
+bandit
+pip-audit

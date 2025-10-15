@@ -1,0 +1,15 @@
+# Herramientas y stubs solo para desarrollo (no necesarias en runtime)
+mypy==1.11.2
+ruff==0.6.8
+black==24.8.0
+isort==5.13.2
+pytest==8.3.3
+pytest-django==4.9.0
+bandit==1.7.9
+pip-audit==2.7.3
+pre-commit==3.7.1
+
+# Stubs de tipos
+django-stubs==5.1.1
+types-requests==2.32.0.20240914
+types-PyMySQL==1.1.0.20240524

@@ -1,0 +1,12 @@
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.git
+.gitignore
+.vscode
+.devcontainer
+db-backup
+dist
+.build
+.env
